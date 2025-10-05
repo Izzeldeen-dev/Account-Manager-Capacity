@@ -8,12 +8,33 @@
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
 </head>
 <body>
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState } = React;
+        const { useState, useEffect } = React;
+
+        // Firebase Configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyBwqkoiPx6nWU5Gv8WWc7P_Qu8_RsxhRF8",
+            authDomain: "account-manager-dashboar-18a39.firebaseapp.com",
+            databaseURL: "https://account-manager-dashboar-18a39-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "account-manager-dashboar-18a39",
+            storageBucket: "account-manager-dashboar-18a39.firebasestorage.app",
+            messagingSenderId: "494866550687",
+            appId: "1:494866550687:web:efaa3ffb794748510877aa"
+        };
+
+        // Initialize Firebase
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
+        const database = firebase.database();
 
         // Icon components as inline SVGs
         const Icons = {
@@ -61,57 +82,126 @@
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
                 </svg>
+            ),
+            Cloud: () => (
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                </svg>
             )
         };
 
         function CapacityDashboard() {
             const [maxClients, setMaxClients] = useState(3);
             const [maxVideos, setMaxVideos] = useState(540);
-            
-            const [accountManagers, setAccountManagers] = useState([
-                {
-                    id: 1,
-                    name: 'Account Manager 1',
-                    clients: [
-                        { id: 1, name: 'Client A', videos: 180 },
-                        { id: 2, name: 'Client B', videos: 120 }
-                    ]
-                },
-                {
-                    id: 2,
-                    name: 'Account Manager 2',
-                    clients: [
-                        { id: 3, name: 'Client C', videos: 90 },
-                        { id: 4, name: 'Client D', videos: 90 },
-                        { id: 5, name: 'Client E', videos: 60 }
-                    ]
-                },
-                {
-                    id: 3,
-                    name: 'Account Manager 3',
-                    clients: [
-                        { id: 6, name: 'Client F', videos: 180 },
-                        { id: 7, name: 'Client G', videos: 150 }
-                    ]
-                },
-                {
-                    id: 4,
-                    name: 'Account Manager 4',
-                    clients: [
-                        { id: 8, name: 'Client H', videos: 90 }
-                    ]
-                },
-                {
-                    id: 5,
-                    name: 'Account Manager 5',
-                    clients: []
-                }
-            ]);
+            const [accountManagers, setAccountManagers] = useState([]);
+            const [loading, setLoading] = useState(true);
+            const [syncing, setSyncing] = useState(false);
 
             const [editingAM, setEditingAM] = useState(null);
             const [showAddClient, setShowAddClient] = useState(null);
             const [newClientName, setNewClientName] = useState('');
             const [newClientVideos, setNewClientVideos] = useState('');
+
+            // Load data from Firebase on mount
+            useEffect(() => {
+                const settingsRef = database.ref('settings');
+                const managersRef = database.ref('accountManagers');
+
+                settingsRef.on('value', (snapshot) => {
+                    const data = snapshot.val();
+                    if (data) {
+                        setMaxClients(data.maxClients || 3);
+                        setMaxVideos(data.maxVideos || 540);
+                    }
+                });
+
+                managersRef.on('value', (snapshot) => {
+                    const data = snapshot.val();
+                    if (data) {
+                        setAccountManagers(data);
+                    } else {
+                        // Initialize with default data if nothing exists
+                        const defaultData = [
+                            {
+                                id: 1,
+                                name: 'Account Manager 1',
+                                clients: [
+                                    { id: 1, name: 'Client A', videos: 180 },
+                                    { id: 2, name: 'Client B', videos: 120 }
+                                ]
+                            },
+                            {
+                                id: 2,
+                                name: 'Account Manager 2',
+                                clients: [
+                                    { id: 3, name: 'Client C', videos: 90 },
+                                    { id: 4, name: 'Client D', videos: 90 },
+                                    { id: 5, name: 'Client E', videos: 60 }
+                                ]
+                            },
+                            {
+                                id: 3,
+                                name: 'Account Manager 3',
+                                clients: [
+                                    { id: 6, name: 'Client F', videos: 180 },
+                                    { id: 7, name: 'Client G', videos: 150 }
+                                ]
+                            },
+                            {
+                                id: 4,
+                                name: 'Account Manager 4',
+                                clients: [
+                                    { id: 8, name: 'Client H', videos: 90 }
+                                ]
+                            },
+                            {
+                                id: 5,
+                                name: 'Account Manager 5',
+                                clients: []
+                            }
+                        ];
+                        setAccountManagers(defaultData);
+                        database.ref('accountManagers').set(defaultData);
+                    }
+                    setLoading(false);
+                });
+
+                return () => {
+                    settingsRef.off();
+                    managersRef.off();
+                };
+            }, []);
+
+            // Save settings to Firebase
+            const updateSettings = (newMaxClients, newMaxVideos) => {
+                setSyncing(true);
+                database.ref('settings').set({
+                    maxClients: newMaxClients,
+                    maxVideos: newMaxVideos
+                }).then(() => {
+                    setTimeout(() => setSyncing(false), 500);
+                });
+            };
+
+            // Save account managers to Firebase
+            const updateAccountManagers = (newManagers) => {
+                setSyncing(true);
+                database.ref('accountManagers').set(newManagers).then(() => {
+                    setTimeout(() => setSyncing(false), 500);
+                });
+            };
+
+            const handleMaxClientsChange = (value) => {
+                const newValue = parseInt(value) || 0;
+                setMaxClients(newValue);
+                updateSettings(newValue, maxVideos);
+            };
+
+            const handleMaxVideosChange = (value) => {
+                const newValue = parseInt(value) || 0;
+                setMaxVideos(newValue);
+                updateSettings(maxClients, newValue);
+            };
 
             const calculateCapacity = (am) => {
                 const totalVideos = am.clients.reduce((sum, client) => sum + client.videos, 0);
@@ -146,7 +236,7 @@
             const addClient = (amId) => {
                 if (!newClientName || !newClientVideos) return;
                 
-                setAccountManagers(accountManagers.map(am => {
+                const newManagers = accountManagers.map(am => {
                     if (am.id === amId) {
                         const newClient = {
                             id: Date.now(),
@@ -156,7 +246,10 @@
                         return { ...am, clients: [...am.clients, newClient] };
                     }
                     return am;
-                }));
+                });
+                
+                setAccountManagers(newManagers);
+                updateAccountManagers(newManagers);
                 
                 setNewClientName('');
                 setNewClientVideos('');
@@ -164,22 +257,29 @@
             };
 
             const removeClient = (amId, clientId) => {
-                setAccountManagers(accountManagers.map(am => {
+                const newManagers = accountManagers.map(am => {
                     if (am.id === amId) {
                         return { ...am, clients: am.clients.filter(c => c.id !== clientId) };
                     }
                     return am;
-                }));
+                });
+                
+                setAccountManagers(newManagers);
+                updateAccountManagers(newManagers);
             };
 
             const updateAMName = (amId, newName) => {
-                setAccountManagers(accountManagers.map(am => 
+                const newManagers = accountManagers.map(am => 
                     am.id === amId ? { ...am, name: newName } : am
-                ));
+                );
+                
+                setAccountManagers(newManagers);
+                updateAccountManagers(newManagers);
                 setEditingAM(null);
             };
 
             const getRecommendation = () => {
+                if (accountManagers.length === 0) return null;
                 const sorted = [...accountManagers].sort((a, b) => {
                     const capA = calculateCapacity(a).overallUtilization;
                     const capB = calculateCapacity(b).overallUtilization;
@@ -188,14 +288,40 @@
                 return sorted[0];
             };
 
+            if (loading) {
+                return (
+                    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center">
+                        <div className="text-center">
+                            <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-500 mx-auto mb-4"></div>
+                            <p className="text-slate-600">Loading dashboard...</p>
+                        </div>
+                    </div>
+                );
+            }
+
             const recommendation = getRecommendation();
 
             return (
                 <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-8">
                     <div className="max-w-7xl mx-auto">
-                        <div className="mb-8">
-                            <h1 className="text-4xl font-bold text-slate-800 mb-2">Account Manager Capacity Dashboard</h1>
-                            <p className="text-slate-600">Monitor workload and optimize client allocation</p>
+                        <div className="mb-8 flex items-center justify-between">
+                            <div>
+                                <h1 className="text-4xl font-bold text-slate-800 mb-2">Account Manager Capacity Dashboard</h1>
+                                <p className="text-slate-600">Monitor workload and optimize client allocation</p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                {syncing ? (
+                                    <>
+                                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500"></div>
+                                        <span className="text-sm text-blue-600">Syncing...</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <Icons.Cloud />
+                                        <span className="text-sm text-green-600">Synced</span>
+                                    </>
+                                )}
+                            </div>
                         </div>
 
                         {/* Capacity Settings */}
@@ -209,7 +335,7 @@
                                     <input
                                         type="number"
                                         value={maxClients}
-                                        onChange={(e) => setMaxClients(parseInt(e.target.value) || 0)}
+                                        onChange={(e) => handleMaxClientsChange(e.target.value)}
                                         className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                                     />
                                 </div>
@@ -220,7 +346,7 @@
                                     <input
                                         type="number"
                                         value={maxVideos}
-                                        onChange={(e) => setMaxVideos(parseInt(e.target.value) || 0)}
+                                        onChange={(e) => handleMaxVideosChange(e.target.value)}
                                         className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                                     />
                                 </div>
@@ -228,18 +354,20 @@
                         </div>
 
                         {/* Recommendation Card */}
-                        <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-xl shadow-lg p-6 mb-8 text-white">
-                            <div className="flex items-center gap-3 mb-2">
-                                <Icons.TrendingUp />
-                                <h2 className="text-xl font-semibold">Next Client Assignment</h2>
+                        {recommendation && (
+                            <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-xl shadow-lg p-6 mb-8 text-white">
+                                <div className="flex items-center gap-3 mb-2">
+                                    <Icons.TrendingUp />
+                                    <h2 className="text-xl font-semibold">Next Client Assignment</h2>
+                                </div>
+                                <p className="text-blue-100 text-lg">
+                                    Assign the next client to: <span className="font-bold text-white">{recommendation.name}</span>
+                                </p>
+                                <p className="text-blue-100 text-sm mt-1">
+                                    Current utilization: {calculateCapacity(recommendation).overallUtilization.toFixed(0)}%
+                                </p>
                             </div>
-                            <p className="text-blue-100 text-lg">
-                                Assign the next client to: <span className="font-bold text-white">{recommendation.name}</span>
-                            </p>
-                            <p className="text-blue-100 text-sm mt-1">
-                                Current utilization: {calculateCapacity(recommendation).overallUtilization.toFixed(0)}%
-                            </p>
-                        </div>
+                        )}
 
                         {/* Account Managers Grid */}
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
