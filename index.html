@@ -109,52 +109,57 @@
             return color === 'red' ? 'bg-red-500' : color === 'yellow' ? 'bg-yellow-500' : 'bg-green-500';
         }
 
-        // Actions
-        window.updateSetting = (field, val) => {
-            data.settings[field] = parseInt(val) || 0;
-            save();
-        };
+        // Actions - Make them global
+        const actions = {
+            updateSetting: (field, val) => {
+                data.settings[field] = parseInt(val) || 0;
+                save();
+            },
 
-        window.addClient = (mgrId, name, videos) => {
-            const mgr = data.managers.find(m => m.id === mgrId);
-            if (mgr && name && videos) {
-                mgr.clients.push({ id: Date.now(), name, videos: parseInt(videos) });
+            addClient: (mgrId, name, videos) => {
+                const mgr = data.managers.find(m => m.id === mgrId);
+                if (mgr && name && videos) {
+                    mgr.clients.push({ id: Date.now(), name, videos: parseInt(videos) });
+                    data.addingTo = null;
+                    save();
+                }
+            },
+
+            removeClient: (mgrId, clientId) => {
+                const mgr = data.managers.find(m => m.id === mgrId);
+                if (mgr) {
+                    mgr.clients = mgr.clients.filter(c => c.id !== clientId);
+                    save();
+                }
+            },
+
+            renameManager: (mgrId, newName) => {
+                const mgr = data.managers.find(m => m.id === mgrId);
+                if (mgr && newName) {
+                    mgr.name = newName;
+                    data.editingId = null;
+                    save();
+                }
+            },
+
+            showAddForm: (mgrId) => {
+                data.addingTo = mgrId;
+                draw();
+            },
+
+            cancelAdd: () => {
                 data.addingTo = null;
-                save();
+                draw();
+            },
+
+            startEdit: (mgrId) => {
+                data.editingId = mgrId;
+                draw();
             }
         };
 
-        window.removeClient = (mgrId, clientId) => {
-            const mgr = data.managers.find(m => m.id === mgrId);
-            if (mgr) {
-                mgr.clients = mgr.clients.filter(c => c.id !== clientId);
-                save();
-            }
-        };
-
-        window.renameManager = (mgrId, newName) => {
-            const mgr = data.managers.find(m => m.id === mgrId);
-            if (mgr && newName) {
-                mgr.name = newName;
-                data.editingId = null;
-                save();
-            }
-        };
-
-        window.showAddForm = (mgrId) => {
-            data.addingTo = mgrId;
-            draw();
-        };
-
-        window.cancelAdd = () => {
-            data.addingTo = null;
-            draw();
-        };
-
-        window.startEdit = (mgrId) => {
-            data.editingId = mgrId;
-            draw();
-        };
+        // Expose to window
+        Object.assign(window, actions);
 
         // Draw UI
         function draw() {
