@@ -109,58 +109,6 @@
             return color === 'red' ? 'bg-red-500' : color === 'yellow' ? 'bg-yellow-500' : 'bg-green-500';
         }
 
-        // Actions - Make them global
-        const actions = {
-            updateSetting: (field, val) => {
-                data.settings[field] = parseInt(val) || 0;
-                save();
-            },
-
-            addClient: (mgrId, name, videos) => {
-                const mgr = data.managers.find(m => m.id === mgrId);
-                if (mgr && name && videos) {
-                    mgr.clients.push({ id: Date.now(), name, videos: parseInt(videos) });
-                    data.addingTo = null;
-                    save();
-                }
-            },
-
-            removeClient: (mgrId, clientId) => {
-                const mgr = data.managers.find(m => m.id === mgrId);
-                if (mgr) {
-                    mgr.clients = mgr.clients.filter(c => c.id !== clientId);
-                    save();
-                }
-            },
-
-            renameManager: (mgrId, newName) => {
-                const mgr = data.managers.find(m => m.id === mgrId);
-                if (mgr && newName) {
-                    mgr.name = newName;
-                    data.editingId = null;
-                    save();
-                }
-            },
-
-            showAddForm: (mgrId) => {
-                data.addingTo = mgrId;
-                draw();
-            },
-
-            cancelAdd: () => {
-                data.addingTo = null;
-                draw();
-            },
-
-            startEdit: (mgrId) => {
-                data.editingId = mgrId;
-                draw();
-            }
-        };
-
-        // Expose to window
-        Object.assign(window, actions);
-
         // Draw UI
         function draw() {
             const best = data.managers.sort((a, b) => 
@@ -191,13 +139,13 @@
                                 <div>
                                     <label class="block text-sm font-medium mb-2">Max Clients</label>
                                     <input type="number" value="${data.settings.maxClients}" 
-                                        onchange="updateSetting('maxClients', this.value)"
+                                        data-action="updateSetting" data-field="maxClients"
                                         class="w-full px-4 py-2 border rounded-lg">
                                 </div>
                                 <div>
                                     <label class="block text-sm font-medium mb-2">Max Videos/Month</label>
                                     <input type="number" value="${data.settings.maxVideos}"
-                                        onchange="updateSetting('maxVideos', this.value)"
+                                        data-action="updateSetting" data-field="maxVideos"
                                         class="w-full px-4 py-2 border rounded-lg">
                                 </div>
                             </div>
@@ -226,12 +174,11 @@
                                                     ${color === 'green' ? '✅' : color === 'yellow' ? '⚠️' : '🚨'}
                                                     ${data.editingId === mgr.id ? 
                                                         `<input type="text" value="${mgr.name}" 
-                                                            onblur="renameManager(${mgr.id}, this.value)"
-                                                            onkeypress="if(event.key==='Enter') renameManager(${mgr.id}, this.value)"
+                                                            data-action="renameManager" data-mgr="${mgr.id}"
                                                             class="bg-white text-black px-2 py-1 rounded" autofocus>` :
                                                         `<h3 class="text-xl font-bold">${mgr.name}</h3>`
                                                     }
-                                                    <button onclick="startEdit(${mgr.id})" class="hover:bg-white/20 p-1 rounded">✏️</button>
+                                                    <button data-action="startEdit" data-mgr="${mgr.id}" class="hover:bg-white/20 p-1 rounded">✏️</button>
                                                 </div>
                                                 <div class="text-right">
                                                     <div class="text-3xl font-bold">${cap.overall.toFixed(0)}%</div>
@@ -270,7 +217,7 @@
                                                                 <div class="font-medium">${c.name}</div>
                                                                 <div class="text-sm text-gray-600">${c.videos} videos/mo</div>
                                                             </div>
-                                                            <button onclick="removeClient(${mgr.id}, ${c.id})" 
+                                                            <button data-action="removeClient" data-mgr="${mgr.id}" data-client="${c.id}"
                                                                 class="text-red-500 hover:bg-red-50 p-2 rounded">🗑️</button>
                                                         </div>
                                                     `).join('')}
@@ -280,25 +227,23 @@
                                             <!-- Add Client Form -->
                                             ${data.addingTo === mgr.id ? `
                                                 <div class="bg-blue-50 p-3 rounded space-y-2">
-                                                    <input type="text" id="clientName${mgr.id}" placeholder="Client name" 
+                                                    <input type="text" data-input="clientName-${mgr.id}" placeholder="Client name" 
                                                         class="w-full px-3 py-2 border rounded">
-                                                    <input type="number" id="clientVideos${mgr.id}" placeholder="Videos/month"
+                                                    <input type="number" data-input="clientVideos-${mgr.id}" placeholder="Videos/month"
                                                         class="w-full px-3 py-2 border rounded">
                                                     <div class="flex gap-2">
-                                                        <button onclick="addClient(${mgr.id}, 
-                                                            document.getElementById('clientName${mgr.id}').value,
-                                                            document.getElementById('clientVideos${mgr.id}').value)"
+                                                        <button data-action="addClient" data-mgr="${mgr.id}"
                                                             class="flex-1 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
                                                             Add
                                                         </button>
-                                                        <button onclick="cancelAdd()" 
+                                                        <button data-action="cancelAdd"
                                                             class="px-4 py-2 border rounded hover:bg-gray-100">
                                                             Cancel
                                                         </button>
                                                     </div>
                                                 </div>
                                             ` : `
-                                                <button onclick="showAddForm(${mgr.id})"
+                                                <button data-action="showAddForm" data-mgr="${mgr.id}"
                                                     class="w-full py-2 border-2 border-dashed rounded hover:border-blue-500 hover:text-blue-600">
                                                     + Add Client
                                                 </button>
@@ -311,6 +256,97 @@
                     </div>
                 </div>
             `;
+
+            // Attach event listeners
+            attachEvents();
+        }
+
+        // Event Handler
+        function attachEvents() {
+            document.getElementById('app').addEventListener('click', (e) => {
+                const action = e.target.dataset.action;
+                if (!action) return;
+
+                const mgrId = parseInt(e.target.dataset.mgr);
+                const clientId = parseInt(e.target.dataset.client);
+
+                switch(action) {
+                    case 'showAddForm':
+                        data.addingTo = mgrId;
+                        draw();
+                        break;
+
+                    case 'cancelAdd':
+                        data.addingTo = null;
+                        draw();
+                        break;
+
+                    case 'addClient':
+                        const nameInput = document.querySelector(`[data-input="clientName-${mgrId}"]`);
+                        const videosInput = document.querySelector(`[data-input="clientVideos-${mgrId}"]`);
+                        const name = nameInput?.value;
+                        const videos = videosInput?.value;
+                        
+                        const mgr = data.managers.find(m => m.id === mgrId);
+                        if (mgr && name && videos) {
+                            mgr.clients.push({ id: Date.now(), name, videos: parseInt(videos) });
+                            data.addingTo = null;
+                            save();
+                        }
+                        break;
+
+                    case 'removeClient':
+                        const manager = data.managers.find(m => m.id === mgrId);
+                        if (manager) {
+                            manager.clients = manager.clients.filter(c => c.id !== clientId);
+                            save();
+                        }
+                        break;
+
+                    case 'startEdit':
+                        data.editingId = mgrId;
+                        draw();
+                        break;
+                }
+            });
+
+            document.getElementById('app').addEventListener('change', (e) => {
+                const action = e.target.dataset.action;
+                const field = e.target.dataset.field;
+
+                if (action === 'updateSetting' && field) {
+                    data.settings[field] = parseInt(e.target.value) || 0;
+                    save();
+                }
+            });
+
+            document.getElementById('app').addEventListener('blur', (e) => {
+                const action = e.target.dataset.action;
+                const mgrId = parseInt(e.target.dataset.mgr);
+
+                if (action === 'renameManager') {
+                    const mgr = data.managers.find(m => m.id === mgrId);
+                    if (mgr && e.target.value) {
+                        mgr.name = e.target.value;
+                        data.editingId = null;
+                        save();
+                    }
+                }
+            }, true);
+
+            document.getElementById('app').addEventListener('keypress', (e) => {
+                const action = e.target.dataset.action;
+                const mgrId = parseInt(e.target.dataset.mgr);
+
+                if (action === 'renameManager' && e.key === 'Enter') {
+                    const mgr = data.managers.find(m => m.id === mgrId);
+                    if (mgr && e.target.value) {
+                        mgr.name = e.target.value;
+                        data.editingId = null;
+                        save();
+                    }
+                }
+            });
         }
 
         // Initial draw
