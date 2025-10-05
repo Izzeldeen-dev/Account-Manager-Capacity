@@ -4,21 +4,30 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Account Manager Capacity Dashboard</title>
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- Firebase SDK -->
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
 </head>
 <body>
-    <div id="root"></div>
+    <div id="root">
+        <div style="display: flex; align-items: center; justify-content: center; min-height: 100vh; background: linear-gradient(to bottom right, #f8fafc, #e2e8f0);">
+            <div style="text-align: center;">
+                <div style="border: 4px solid #e5e7eb; border-top: 4px solid #3b82f6; border-radius: 50%; width: 64px; height: 64px; animation: spin 1s linear infinite; margin: 0 auto 16px;"></div>
+                <p style="color: #64748b;">Loading Firebase...</p>
+            </div>
+        </div>
+    </div>
 
-    <script type="text/babel">
-        const { useState, useEffect } = React;
+    <style>
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
 
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+
+    <script>
         // Firebase Configuration
         const firebaseConfig = {
             apiKey: "AIzaSyBwqkoiPx6nWU5Gv8WWc7P_Qu8_RsxhRF8",
@@ -31,513 +40,445 @@
         };
 
         // Initialize Firebase
-        if (!firebase.apps.length) {
-            firebase.initializeApp(firebaseConfig);
+        let database;
+        try {
+            if (!firebase.apps.length) {
+                firebase.initializeApp(firebaseConfig);
+            }
+            database = firebase.database();
+            console.log('Firebase initialized successfully!');
+        } catch (error) {
+            console.error('Firebase initialization error:', error);
+            document.getElementById('root').innerHTML = `
+                <div style="padding: 20px; max-width: 600px; margin: 50px auto; background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                    <h2 style="color: #ef4444; margin-bottom: 10px;">Firebase Error</h2>
+                    <p style="color: #64748b;">Could not connect to Firebase. Error: ${error.message}</p>
+                    <p style="color: #64748b; margin-top: 10px;">Please check your Firebase configuration and security rules.</p>
+                </div>
+            `;
         }
-        const database = firebase.database();
 
-        // Icon components as inline SVGs
-        const Icons = {
-            Plus: () => (
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-            ),
-            Edit: () => (
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                </svg>
-            ),
-            Trash: () => (
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
-            ),
-            AlertCircle: () => (
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-            ),
-            CheckCircle: () => (
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-            ),
-            AlertTriangle: () => (
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                </svg>
-            ),
-            Users: () => (
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-                </svg>
-            ),
-            Video: () => (
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                </svg>
-            ),
-            TrendingUp: () => (
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-                </svg>
-            ),
-            Cloud: () => (
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                </svg>
-            )
+        // State management
+        let state = {
+            maxClients: 3,
+            maxVideos: 540,
+            accountManagers: [],
+            loading: true,
+            syncing: false,
+            editingAM: null,
+            showAddClient: null,
+            newClientName: '',
+            newClientVideos: ''
         };
 
-        function CapacityDashboard() {
-            const [maxClients, setMaxClients] = useState(3);
-            const [maxVideos, setMaxVideos] = useState(540);
-            const [accountManagers, setAccountManagers] = useState([]);
-            const [loading, setLoading] = useState(true);
-            const [syncing, setSyncing] = useState(false);
+        // Default data
+        const defaultManagers = [
+            {
+                id: 1,
+                name: 'Account Manager 1',
+                clients: [
+                    { id: 1, name: 'Client A', videos: 180 },
+                    { id: 2, name: 'Client B', videos: 120 }
+                ]
+            },
+            {
+                id: 2,
+                name: 'Account Manager 2',
+                clients: [
+                    { id: 3, name: 'Client C', videos: 90 },
+                    { id: 4, name: 'Client D', videos: 90 },
+                    { id: 5, name: 'Client E', videos: 60 }
+                ]
+            },
+            {
+                id: 3,
+                name: 'Account Manager 3',
+                clients: [
+                    { id: 6, name: 'Client F', videos: 180 },
+                    { id: 7, name: 'Client G', videos: 150 }
+                ]
+            },
+            {
+                id: 4,
+                name: 'Account Manager 4',
+                clients: [
+                    { id: 8, name: 'Client H', videos: 90 }
+                ]
+            },
+            {
+                id: 5,
+                name: 'Account Manager 5',
+                clients: []
+            }
+        ];
 
-            const [editingAM, setEditingAM] = useState(null);
-            const [showAddClient, setShowAddClient] = useState(null);
-            const [newClientName, setNewClientName] = useState('');
-            const [newClientVideos, setNewClientVideos] = useState('');
+        // Load data from Firebase
+        function loadData() {
+            const settingsRef = database.ref('settings');
+            const managersRef = database.ref('accountManagers');
 
-            // Load data from Firebase on mount
-            useEffect(() => {
-                const settingsRef = database.ref('settings');
-                const managersRef = database.ref('accountManagers');
+            settingsRef.on('value', (snapshot) => {
+                const data = snapshot.val();
+                if (data) {
+                    state.maxClients = data.maxClients || 3;
+                    state.maxVideos = data.maxVideos || 540;
+                    render();
+                }
+            });
 
-                settingsRef.on('value', (snapshot) => {
-                    const data = snapshot.val();
-                    if (data) {
-                        setMaxClients(data.maxClients || 3);
-                        setMaxVideos(data.maxVideos || 540);
-                    }
-                });
+            managersRef.on('value', (snapshot) => {
+                const data = snapshot.val();
+                if (data) {
+                    state.accountManagers = data;
+                } else {
+                    state.accountManagers = defaultManagers;
+                    database.ref('accountManagers').set(defaultManagers);
+                }
+                state.loading = false;
+                render();
+            });
+        }
 
-                managersRef.on('value', (snapshot) => {
-                    const data = snapshot.val();
-                    if (data) {
-                        setAccountManagers(data);
-                    } else {
-                        // Initialize with default data if nothing exists
-                        const defaultData = [
-                            {
-                                id: 1,
-                                name: 'Account Manager 1',
-                                clients: [
-                                    { id: 1, name: 'Client A', videos: 180 },
-                                    { id: 2, name: 'Client B', videos: 120 }
-                                ]
-                            },
-                            {
-                                id: 2,
-                                name: 'Account Manager 2',
-                                clients: [
-                                    { id: 3, name: 'Client C', videos: 90 },
-                                    { id: 4, name: 'Client D', videos: 90 },
-                                    { id: 5, name: 'Client E', videos: 60 }
-                                ]
-                            },
-                            {
-                                id: 3,
-                                name: 'Account Manager 3',
-                                clients: [
-                                    { id: 6, name: 'Client F', videos: 180 },
-                                    { id: 7, name: 'Client G', videos: 150 }
-                                ]
-                            },
-                            {
-                                id: 4,
-                                name: 'Account Manager 4',
-                                clients: [
-                                    { id: 8, name: 'Client H', videos: 90 }
-                                ]
-                            },
-                            {
-                                id: 5,
-                                name: 'Account Manager 5',
-                                clients: []
-                            }
-                        ];
-                        setAccountManagers(defaultData);
-                        database.ref('accountManagers').set(defaultData);
-                    }
-                    setLoading(false);
-                });
+        // Save functions
+        function updateSettings(maxClients, maxVideos) {
+            state.syncing = true;
+            render();
+            database.ref('settings').set({
+                maxClients: maxClients,
+                maxVideos: maxVideos
+            }).then(() => {
+                setTimeout(() => {
+                    state.syncing = false;
+                    render();
+                }, 500);
+            });
+        }
 
-                return () => {
-                    settingsRef.off();
-                    managersRef.off();
-                };
-            }, []);
+        function updateAccountManagers(managers) {
+            state.syncing = true;
+            render();
+            database.ref('accountManagers').set(managers).then(() => {
+                setTimeout(() => {
+                    state.syncing = false;
+                    render();
+                }, 500);
+            });
+        }
 
-            // Save settings to Firebase
-            const updateSettings = (newMaxClients, newMaxVideos) => {
-                setSyncing(true);
-                database.ref('settings').set({
-                    maxClients: newMaxClients,
-                    maxVideos: newMaxVideos
-                }).then(() => {
-                    setTimeout(() => setSyncing(false), 500);
-                });
+        // Calculate capacity
+        function calculateCapacity(am) {
+            const totalVideos = am.clients.reduce((sum, client) => sum + client.videos, 0);
+            const clientCount = am.clients.length;
+            
+            const videoUtilization = (totalVideos / state.maxVideos) * 100;
+            const clientUtilization = (clientCount / state.maxClients) * 100;
+            const overallUtilization = Math.max(videoUtilization, clientUtilization);
+            
+            return {
+                totalVideos,
+                clientCount,
+                videoUtilization: Math.min(videoUtilization, 100),
+                clientUtilization: Math.min(clientUtilization, 100),
+                overallUtilization: Math.min(overallUtilization, 100)
             };
+        }
 
-            // Save account managers to Firebase
-            const updateAccountManagers = (newManagers) => {
-                setSyncing(true);
-                database.ref('accountManagers').set(newManagers).then(() => {
-                    setTimeout(() => setSyncing(false), 500);
-                });
-            };
+        function getStatusColor(utilization) {
+            if (utilization >= 90) return 'bg-red-500';
+            if (utilization >= 70) return 'bg-yellow-500';
+            return 'bg-green-500';
+        }
 
-            const handleMaxClientsChange = (value) => {
-                const newValue = parseInt(value) || 0;
-                setMaxClients(newValue);
-                updateSettings(newValue, maxVideos);
-            };
+        function getRecommendation() {
+            if (state.accountManagers.length === 0) return null;
+            const sorted = [...state.accountManagers].sort((a, b) => {
+                const capA = calculateCapacity(a).overallUtilization;
+                const capB = calculateCapacity(b).overallUtilization;
+                return capA - capB;
+            });
+            return sorted[0];
+        }
 
-            const handleMaxVideosChange = (value) => {
-                const newValue = parseInt(value) || 0;
-                setMaxVideos(newValue);
-                updateSettings(maxClients, newValue);
-            };
-
-            const calculateCapacity = (am) => {
-                const totalVideos = am.clients.reduce((sum, client) => sum + client.videos, 0);
-                const clientCount = am.clients.length;
-                
-                const videoUtilization = (totalVideos / maxVideos) * 100;
-                const clientUtilization = (clientCount / maxClients) * 100;
-                
-                const overallUtilization = Math.max(videoUtilization, clientUtilization);
-                
-                return {
-                    totalVideos,
-                    clientCount,
-                    videoUtilization: Math.min(videoUtilization, 100),
-                    clientUtilization: Math.min(clientUtilization, 100),
-                    overallUtilization: Math.min(overallUtilization, 100)
-                };
-            };
-
-            const getStatusColor = (utilization) => {
-                if (utilization >= 90) return 'bg-red-500';
-                if (utilization >= 70) return 'bg-yellow-500';
-                return 'bg-green-500';
-            };
-
-            const getStatusIcon = (utilization) => {
-                if (utilization >= 90) return <Icons.AlertCircle />;
-                if (utilization >= 70) return <Icons.AlertTriangle />;
-                return <Icons.CheckCircle />;
-            };
-
-            const addClient = (amId) => {
-                if (!newClientName || !newClientVideos) return;
-                
-                const newManagers = accountManagers.map(am => {
-                    if (am.id === amId) {
-                        const newClient = {
+        // Actions
+        function addClient(amId) {
+            if (!state.newClientName || !state.newClientVideos) return;
+            
+            const newManagers = state.accountManagers.map(am => {
+                if (am.id === amId) {
+                    return {
+                        ...am,
+                        clients: [...am.clients, {
                             id: Date.now(),
-                            name: newClientName,
-                            videos: parseInt(newClientVideos)
-                        };
-                        return { ...am, clients: [...am.clients, newClient] };
-                    }
-                    return am;
-                });
-                
-                setAccountManagers(newManagers);
-                updateAccountManagers(newManagers);
-                
-                setNewClientName('');
-                setNewClientVideos('');
-                setShowAddClient(null);
-            };
+                            name: state.newClientName,
+                            videos: parseInt(state.newClientVideos)
+                        }]
+                    };
+                }
+                return am;
+            });
+            
+            state.accountManagers = newManagers;
+            state.newClientName = '';
+            state.newClientVideos = '';
+            state.showAddClient = null;
+            updateAccountManagers(newManagers);
+        }
 
-            const removeClient = (amId, clientId) => {
-                const newManagers = accountManagers.map(am => {
-                    if (am.id === amId) {
-                        return { ...am, clients: am.clients.filter(c => c.id !== clientId) };
-                    }
-                    return am;
-                });
-                
-                setAccountManagers(newManagers);
-                updateAccountManagers(newManagers);
-            };
+        function removeClient(amId, clientId) {
+            const newManagers = state.accountManagers.map(am => {
+                if (am.id === amId) {
+                    return {
+                        ...am,
+                        clients: am.clients.filter(c => c.id !== clientId)
+                    };
+                }
+                return am;
+            });
+            
+            state.accountManagers = newManagers;
+            updateAccountManagers(newManagers);
+        }
 
-            const updateAMName = (amId, newName) => {
-                const newManagers = accountManagers.map(am => 
-                    am.id === amId ? { ...am, name: newName } : am
-                );
-                
-                setAccountManagers(newManagers);
-                updateAccountManagers(newManagers);
-                setEditingAM(null);
-            };
+        function updateAMName(amId, newName) {
+            const newManagers = state.accountManagers.map(am => 
+                am.id === amId ? { ...am, name: newName } : am
+            );
+            
+            state.accountManagers = newManagers;
+            state.editingAM = null;
+            updateAccountManagers(newManagers);
+        }
 
-            const getRecommendation = () => {
-                if (accountManagers.length === 0) return null;
-                const sorted = [...accountManagers].sort((a, b) => {
-                    const capA = calculateCapacity(a).overallUtilization;
-                    const capB = calculateCapacity(b).overallUtilization;
-                    return capA - capB;
-                });
-                return sorted[0];
-            };
-
-            if (loading) {
-                return (
-                    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center">
-                        <div className="text-center">
-                            <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-500 mx-auto mb-4"></div>
-                            <p className="text-slate-600">Loading dashboard...</p>
+        // Render function
+        function render() {
+            const root = document.getElementById('root');
+            
+            if (state.loading) {
+                root.innerHTML = `
+                    <div style="display: flex; align-items: center; justify-content: center; min-height: 100vh; background: linear-gradient(to bottom right, #f8fafc, #e2e8f0);">
+                        <div style="text-align: center;">
+                            <div style="border: 4px solid #e5e7eb; border-top: 4px solid #3b82f6; border-radius: 50%; width: 64px; height: 64px; animation: spin 1s linear infinite; margin: 0 auto 16px;"></div>
+                            <p style="color: #64748b;">Loading dashboard...</p>
                         </div>
                     </div>
-                );
+                `;
+                return;
             }
 
             const recommendation = getRecommendation();
 
-            return (
-                <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-8">
-                    <div className="max-w-7xl mx-auto">
-                        <div className="mb-8 flex items-center justify-between">
+            root.innerHTML = `
+                <div class="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-8">
+                    <div class="max-w-7xl mx-auto">
+                        <div class="mb-8 flex items-center justify-between">
                             <div>
-                                <h1 className="text-4xl font-bold text-slate-800 mb-2">Account Manager Capacity Dashboard</h1>
-                                <p className="text-slate-600">Monitor workload and optimize client allocation</p>
+                                <h1 class="text-4xl font-bold text-slate-800 mb-2">Account Manager Capacity Dashboard</h1>
+                                <p class="text-slate-600">Monitor workload and optimize client allocation</p>
                             </div>
-                            <div className="flex items-center gap-2">
-                                {syncing ? (
-                                    <>
-                                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500"></div>
-                                        <span className="text-sm text-blue-600">Syncing...</span>
-                                    </>
-                                ) : (
-                                    <>
-                                        <Icons.Cloud />
-                                        <span className="text-sm text-green-600">Synced</span>
-                                    </>
-                                )}
+                            <div class="flex items-center gap-2">
+                                ${state.syncing ? `
+                                    <div style="border: 2px solid #e5e7eb; border-top: 2px solid #3b82f6; border-radius: 50%; width: 16px; height: 16px; animation: spin 1s linear infinite;"></div>
+                                    <span class="text-sm text-blue-600">Syncing...</span>
+                                ` : `
+                                    <svg class="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                                    </svg>
+                                    <span class="text-sm text-green-600">Synced</span>
+                                `}
                             </div>
                         </div>
 
-                        {/* Capacity Settings */}
-                        <div className="bg-white rounded-xl shadow-lg p-6 mb-8">
-                            <h2 className="text-xl font-semibold text-slate-800 mb-4">Capacity Thresholds</h2>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <!-- Capacity Settings -->
+                        <div class="bg-white rounded-xl shadow-lg p-6 mb-8">
+                            <h2 class="text-xl font-semibold text-slate-800 mb-4">Capacity Thresholds</h2>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div>
-                                    <label className="block text-sm font-medium text-slate-700 mb-2">
-                                        Max Clients per Account Manager
-                                    </label>
-                                    <input
-                                        type="number"
-                                        value={maxClients}
-                                        onChange={(e) => handleMaxClientsChange(e.target.value)}
-                                        className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                    />
+                                    <label class="block text-sm font-medium text-slate-700 mb-2">Max Clients per Account Manager</label>
+                                    <input type="number" value="${state.maxClients}" 
+                                        onchange="state.maxClients = parseInt(this.value) || 0; updateSettings(state.maxClients, state.maxVideos);"
+                                        class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-slate-700 mb-2">
-                                        Max Videos per Month (Total)
-                                    </label>
-                                    <input
-                                        type="number"
-                                        value={maxVideos}
-                                        onChange={(e) => handleMaxVideosChange(e.target.value)}
-                                        className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                    />
+                                    <label class="block text-sm font-medium text-slate-700 mb-2">Max Videos per Month (Total)</label>
+                                    <input type="number" value="${state.maxVideos}"
+                                        onchange="state.maxVideos = parseInt(this.value) || 0; updateSettings(state.maxClients, state.maxVideos);"
+                                        class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
                                 </div>
                             </div>
                         </div>
 
-                        {/* Recommendation Card */}
-                        {recommendation && (
-                            <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-xl shadow-lg p-6 mb-8 text-white">
-                                <div className="flex items-center gap-3 mb-2">
-                                    <Icons.TrendingUp />
-                                    <h2 className="text-xl font-semibold">Next Client Assignment</h2>
+                        <!-- Recommendation Card -->
+                        ${recommendation ? `
+                            <div class="bg-gradient-to-r from-blue-500 to-blue-600 rounded-xl shadow-lg p-6 mb-8 text-white">
+                                <div class="flex items-center gap-3 mb-2">
+                                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path>
+                                    </svg>
+                                    <h2 class="text-xl font-semibold">Next Client Assignment</h2>
                                 </div>
-                                <p className="text-blue-100 text-lg">
-                                    Assign the next client to: <span className="font-bold text-white">{recommendation.name}</span>
+                                <p class="text-blue-100 text-lg">
+                                    Assign the next client to: <span class="font-bold text-white">${recommendation.name}</span>
                                 </p>
-                                <p className="text-blue-100 text-sm mt-1">
-                                    Current utilization: {calculateCapacity(recommendation).overallUtilization.toFixed(0)}%
+                                <p class="text-blue-100 text-sm mt-1">
+                                    Current utilization: ${calculateCapacity(recommendation).overallUtilization.toFixed(0)}%
                                 </p>
                             </div>
-                        )}
+                        ` : ''}
 
-                        {/* Account Managers Grid */}
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                            {accountManagers.map(am => {
+                        <!-- Account Managers Grid -->
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            ${state.accountManagers.map(am => {
                                 const capacity = calculateCapacity(am);
                                 const statusColor = getStatusColor(capacity.overallUtilization);
                                 
-                                return (
-                                    <div key={am.id} className="bg-white rounded-xl shadow-lg overflow-hidden">
-                                        {/* Header */}
-                                        <div className={`${statusColor} p-4 text-white`}>
-                                            <div className="flex items-center justify-between">
-                                                <div className="flex items-center gap-3">
-                                                    {getStatusIcon(capacity.overallUtilization)}
-                                                    {editingAM === am.id ? (
-                                                        <input
-                                                            type="text"
-                                                            defaultValue={am.name}
-                                                            onBlur={(e) => updateAMName(am.id, e.target.value)}
-                                                            onKeyPress={(e) => e.key === 'Enter' && updateAMName(am.id, e.target.value)}
-                                                            className="bg-white text-slate-800 px-2 py-1 rounded"
-                                                            autoFocus
-                                                        />
-                                                    ) : (
-                                                        <h3 className="text-xl font-semibold">{am.name}</h3>
-                                                    )}
-                                                    <button
-                                                        onClick={() => setEditingAM(am.id)}
-                                                        className="hover:bg-white/20 p-1 rounded"
-                                                    >
-                                                        <Icons.Edit />
+                                return `
+                                    <div class="bg-white rounded-xl shadow-lg overflow-hidden">
+                                        <!-- Header -->
+                                        <div class="${statusColor} p-4 text-white">
+                                            <div class="flex items-center justify-between">
+                                                <div class="flex items-center gap-3">
+                                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        ${capacity.overallUtilization >= 90 ? 
+                                                            '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>' :
+                                                          capacity.overallUtilization >= 70 ?
+                                                            '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>' :
+                                                            '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>'
+                                                        }
+                                                    </svg>
+                                                    ${state.editingAM === am.id ? `
+                                                        <input type="text" value="${am.name}" 
+                                                            onblur="updateAMName(${am.id}, this.value)"
+                                                            onkeypress="if(event.key === 'Enter') updateAMName(${am.id}, this.value)"
+                                                            class="bg-white text-slate-800 px-2 py-1 rounded" autofocus>
+                                                    ` : `
+                                                        <h3 class="text-xl font-semibold">${am.name}</h3>
+                                                    `}
+                                                    <button onclick="state.editingAM = ${am.id}; render();" class="hover:bg-white/20 p-1 rounded">
+                                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
+                                                        </svg>
                                                     </button>
                                                 </div>
-                                                <div className="text-right">
-                                                    <div className="text-2xl font-bold">{capacity.overallUtilization.toFixed(0)}%</div>
-                                                    <div className="text-xs opacity-90">Capacity</div>
+                                                <div class="text-right">
+                                                    <div class="text-2xl font-bold">${capacity.overallUtilization.toFixed(0)}%</div>
+                                                    <div class="text-xs opacity-90">Capacity</div>
                                                 </div>
                                             </div>
                                         </div>
 
-                                        {/* Stats */}
-                                        <div className="grid grid-cols-2 gap-4 p-4 bg-slate-50">
-                                            <div className="flex items-center gap-2">
-                                                <Icons.Users />
+                                        <!-- Stats -->
+                                        <div class="grid grid-cols-2 gap-4 p-4 bg-slate-50">
+                                            <div class="flex items-center gap-2">
+                                                <svg class="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path>
+                                                </svg>
                                                 <div>
-                                                    <div className="text-sm text-slate-600">Clients</div>
-                                                    <div className="text-xl font-semibold text-slate-800">
-                                                        {capacity.clientCount} / {maxClients}
-                                                    </div>
+                                                    <div class="text-sm text-slate-600">Clients</div>
+                                                    <div class="text-xl font-semibold text-slate-800">${capacity.clientCount} / ${state.maxClients}</div>
                                                 </div>
                                             </div>
-                                            <div className="flex items-center gap-2">
-                                                <Icons.Video />
+                                            <div class="flex items-center gap-2">
+                                                <svg class="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+                                                </svg>
                                                 <div>
-                                                    <div className="text-sm text-slate-600">Videos/Month</div>
-                                                    <div className="text-xl font-semibold text-slate-800">
-                                                        {capacity.totalVideos} / {maxVideos}
-                                                    </div>
+                                                    <div class="text-sm text-slate-600">Videos/Month</div>
+                                                    <div class="text-xl font-semibold text-slate-800">${capacity.totalVideos} / ${state.maxVideos}</div>
                                                 </div>
                                             </div>
                                         </div>
 
-                                        {/* Progress Bars */}
-                                        <div className="p-4 space-y-3">
+                                        <!-- Progress Bars -->
+                                        <div class="p-4 space-y-3">
                                             <div>
-                                                <div className="flex justify-between text-sm text-slate-600 mb-1">
+                                                <div class="flex justify-between text-sm text-slate-600 mb-1">
                                                     <span>Client Load</span>
-                                                    <span>{capacity.clientUtilization.toFixed(0)}%</span>
+                                                    <span>${capacity.clientUtilization.toFixed(0)}%</span>
                                                 </div>
-                                                <div className="w-full bg-slate-200 rounded-full h-2">
-                                                    <div
-                                                        className={`h-2 rounded-full transition-all ${getStatusColor(capacity.clientUtilization)}`}
-                                                        style={{ width: `${capacity.clientUtilization}%` }}
-                                                    />
+                                                <div class="w-full bg-slate-200 rounded-full h-2">
+                                                    <div class="h-2 rounded-full transition-all ${getStatusColor(capacity.clientUtilization)}" 
+                                                        style="width: ${capacity.clientUtilization}%"></div>
                                                 </div>
                                             </div>
                                             <div>
-                                                <div className="flex justify-between text-sm text-slate-600 mb-1">
+                                                <div class="flex justify-between text-sm text-slate-600 mb-1">
                                                     <span>Video Load</span>
-                                                    <span>{capacity.videoUtilization.toFixed(0)}%</span>
+                                                    <span>${capacity.videoUtilization.toFixed(0)}%</span>
                                                 </div>
-                                                <div className="w-full bg-slate-200 rounded-full h-2">
-                                                    <div
-                                                        className={`h-2 rounded-full transition-all ${getStatusColor(capacity.videoUtilization)}`}
-                                                        style={{ width: `${capacity.videoUtilization}%` }}
-                                                    />
+                                                <div class="w-full bg-slate-200 rounded-full h-2">
+                                                    <div class="h-2 rounded-full transition-all ${getStatusColor(capacity.videoUtilization)}"
+                                                        style="width: ${capacity.videoUtilization}%"></div>
                                                 </div>
                                             </div>
                                         </div>
 
-                                        {/* Client List */}
-                                        <div className="p-4 border-t border-slate-200">
-                                            <h4 className="font-semibold text-slate-700 mb-3">Clients</h4>
-                                            <div className="space-y-2 mb-3">
-                                                {am.clients.length === 0 ? (
-                                                    <p className="text-slate-400 text-sm italic">No clients assigned</p>
-                                                ) : (
-                                                    am.clients.map(client => (
-                                                        <div key={client.id} className="flex items-center justify-between bg-slate-50 p-3 rounded-lg">
+                                        <!-- Client List -->
+                                        <div class="p-4 border-t border-slate-200">
+                                            <h4 class="font-semibold text-slate-700 mb-3">Clients</h4>
+                                            <div class="space-y-2 mb-3">
+                                                ${am.clients.length === 0 ? 
+                                                    '<p class="text-slate-400 text-sm italic">No clients assigned</p>' :
+                                                    am.clients.map(client => `
+                                                        <div class="flex items-center justify-between bg-slate-50 p-3 rounded-lg">
                                                             <div>
-                                                                <div className="font-medium text-slate-800">{client.name}</div>
-                                                                <div className="text-sm text-slate-600">{client.videos} videos/month</div>
+                                                                <div class="font-medium text-slate-800">${client.name}</div>
+                                                                <div class="text-sm text-slate-600">${client.videos} videos/month</div>
                                                             </div>
-                                                            <button
-                                                                onClick={() => removeClient(am.id, client.id)}
-                                                                className="text-red-500 hover:bg-red-50 p-2 rounded-lg transition-colors"
-                                                            >
-                                                                <Icons.Trash />
+                                                            <button onclick="removeClient(${am.id}, ${client.id})" 
+                                                                class="text-red-500 hover:bg-red-50 p-2 rounded-lg transition-colors">
+                                                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                                                                </svg>
                                                             </button>
                                                         </div>
-                                                    ))
-                                                )}
+                                                    `).join('')
+                                                }
                                             </div>
 
-                                            {/* Add Client Form */}
-                                            {showAddClient === am.id ? (
-                                                <div className="space-y-2 bg-blue-50 p-3 rounded-lg">
-                                                    <input
-                                                        type="text"
-                                                        placeholder="Client name"
-                                                        value={newClientName}
-                                                        onChange={(e) => setNewClientName(e.target.value)}
-                                                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
-                                                    />
-                                                    <input
-                                                        type="number"
-                                                        placeholder="Videos per month"
-                                                        value={newClientVideos}
-                                                        onChange={(e) => setNewClientVideos(e.target.value)}
-                                                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
-                                                    />
-                                                    <div className="flex gap-2">
-                                                        <button
-                                                            onClick={() => addClient(am.id)}
-                                                            className="flex-1 bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition-colors text-sm font-medium"
-                                                        >
+                                            ${state.showAddClient === am.id ? `
+                                                <div class="space-y-2 bg-blue-50 p-3 rounded-lg">
+                                                    <input type="text" placeholder="Client name" 
+                                                        value="${state.newClientName}"
+                                                        oninput="state.newClientName = this.value"
+                                                        class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+                                                    <input type="number" placeholder="Videos per month"
+                                                        value="${state.newClientVideos}"
+                                                        oninput="state.newClientVideos = this.value"
+                                                        class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+                                                    <div class="flex gap-2">
+                                                        <button onclick="addClient(${am.id})"
+                                                            class="flex-1 bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition-colors text-sm font-medium">
                                                             Add Client
                                                         </button>
-                                                        <button
-                                                            onClick={() => {
-                                                                setShowAddClient(null);
-                                                                setNewClientName('');
-                                                                setNewClientVideos('');
-                                                            }}
-                                                            className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors text-sm"
-                                                        >
+                                                        <button onclick="state.showAddClient = null; state.newClientName = ''; state.newClientVideos = ''; render();"
+                                                            class="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors text-sm">
                                                             Cancel
                                                         </button>
                                                     </div>
                                                 </div>
-                                            ) : (
-                                                <button
-                                                    onClick={() => setShowAddClient(am.id)}
-                                                    className="w-full flex items-center justify-center gap-2 px-4 py-2 border-2 border-dashed border-slate-300 rounded-lg text-slate-600 hover:border-blue-400 hover:text-blue-600 transition-colors"
-                                                >
-                                                    <Icons.Plus />
-                                                    <span className="text-sm font-medium">Add Client</span>
+                                            ` : `
+                                                <button onclick="state.showAddClient = ${am.id}; render();"
+                                                    class="w-full flex items-center justify-center gap-2 px-4 py-2 border-2 border-dashed border-slate-300 rounded-lg text-slate-600 hover:border-blue-400 hover:text-blue-600 transition-colors">
+                                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                                                    </svg>
+                                                    <span class="text-sm font-medium">Add Client</span>
                                                 </button>
-                                            )}
+                                            `}
                                         </div>
                                     </div>
-                                );
-                            })}
+                                `;
+                            }).join('')}
                         </div>
                     </div>
                 </div>
-            );
+            `;
         }
 
-        ReactDOM.render(<CapacityDashboard />, document.getElementById('root'));
+        // Initialize
+        if (database) {
+            loadData();
+        }
     </script>
 </body>
 </html>
