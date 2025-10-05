@@ -7,13 +7,27 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    <style>
+        .card-enter { animation: cardEnter 0.3s ease-out; }
+        .card-exit { animation: cardExit 0.2s ease-in; }
+        @keyframes cardEnter { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes cardExit { from { opacity: 1; transform: scale(1); } to { opacity: 0; transform: scale(0.95); } }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .animate-spin { animation: spin 1s linear infinite; }
+        
+        .drag-over { border: 2px dashed #3b82f6 !important; background: #eff6ff !important; }
+        .dragging { opacity: 0.5; cursor: move; }
+        
+        * { transition: background-color 0.2s, border-color 0.2s, transform 0.2s; }
+        button:active { transform: scale(0.95); }
+    </style>
 </head>
-<body class="bg-gray-50">
+<body class="bg-slate-50">
     <div id="app">
         <div class="flex items-center justify-center min-h-screen">
             <div class="text-center">
                 <div class="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                <p class="text-gray-600">Loading from Firebase...</p>
+                <p class="text-slate-600">Loading Dashboard...</p>
             </div>
         </div>
     </div>
@@ -30,7 +44,6 @@
             appId: "1:494866550687:web:efaa3ffb794748510877aa"
         };
 
-        // Initialize Firebase
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
 
@@ -39,42 +52,38 @@
             settings: { maxClients: 3, maxVideos: 540 },
             managers: [
                 { id: 1, name: 'Account Manager 1', clients: [
-                    { id: 1, name: 'Client A', videos: 180 },
-                    { id: 2, name: 'Client B', videos: 120 }
+                    { id: 1, name: 'Client A', videos: 180, notes: '' },
+                    { id: 2, name: 'Client B', videos: 120, notes: '' }
                 ]},
                 { id: 2, name: 'Account Manager 2', clients: [
-                    { id: 3, name: 'Client C', videos: 90 },
-                    { id: 4, name: 'Client D', videos: 90 },
-                    { id: 5, name: 'Client E', videos: 60 }
+                    { id: 3, name: 'Client C', videos: 90, notes: '' },
+                    { id: 4, name: 'Client D', videos: 90, notes: '' },
+                    { id: 5, name: 'Client E', videos: 60, notes: '' }
                 ]},
                 { id: 3, name: 'Account Manager 3', clients: [
-                    { id: 6, name: 'Client F', videos: 180 },
-                    { id: 7, name: 'Client G', videos: 150 }
+                    { id: 6, name: 'Client F', videos: 180, notes: '' },
+                    { id: 7, name: 'Client G', videos: 150, notes: '' }
                 ]},
                 { id: 4, name: 'Account Manager 4', clients: [
-                    { id: 8, name: 'Client H', videos: 90 }
+                    { id: 8, name: 'Client H', videos: 90, notes: '' }
                 ]},
                 { id: 5, name: 'Account Manager 5', clients: [] }
             ]
         };
 
         // Global State
-        let data = { settings: {}, managers: [], syncing: false, editingId: null, addingTo: null };
+        let data = { settings: {}, managers: [], syncing: false, editingId: null, addingTo: null, searchQuery: '', draggedClient: null };
         let isDrawing = false;
 
-        // Save to Firebase (no redraw!)
+        // Save to Firebase
         function save() {
             data.syncing = true;
             updateSyncStatus();
-            
             Promise.all([
                 db.ref('settings').set(data.settings),
                 db.ref('managers').set(data.managers)
             ]).then(() => {
-                setTimeout(() => { 
-                    data.syncing = false; 
-                    updateSyncStatus();
-                }, 500);
+                setTimeout(() => { data.syncing = false; updateSyncStatus(); }, 500);
             }).catch(err => {
                 console.error('Save error:', err);
                 data.syncing = false;
@@ -86,17 +95,16 @@
             const statusEl = document.getElementById('sync-status');
             if (statusEl) {
                 statusEl.innerHTML = data.syncing ? 
-                    '<div class="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div><span class="text-blue-600">Syncing...</span>' :
-                    '<span class="text-green-600">✓ Saved</span>';
+                    '<div class="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div><span class="text-blue-600 font-medium">Syncing...</span>' :
+                    '<svg class="w-5 h-5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg><span class="text-emerald-600 font-medium">Saved</span>';
             }
         }
 
-        // Load from Firebase ONCE - NO LISTENERS
+        // Load from Firebase
         Promise.all([
             db.ref('settings').once('value'),
             db.ref('managers').once('value')
         ]).then(([settingsSnap, managersSnap]) => {
-            // Load settings
             if (settingsSnap.exists()) {
                 data.settings = settingsSnap.val();
             } else {
@@ -104,40 +112,32 @@
                 db.ref('settings').set(data.settings);
             }
 
-            // Load managers
             if (managersSnap.exists()) {
                 let managersData = managersSnap.val();
-                
-                // If Firebase converted array to object, convert it back
                 if (!Array.isArray(managersData) && typeof managersData === 'object') {
                     managersData = Object.values(managersData);
                 }
-                
                 data.managers = managersData;
-                
-                // Fix any managers missing clients array or with object clients
                 data.managers.forEach(mgr => {
                     if (!mgr.clients) {
                         mgr.clients = [];
                     } else if (!Array.isArray(mgr.clients) && typeof mgr.clients === 'object') {
-                        // Convert object to array
                         mgr.clients = Object.values(mgr.clients);
                     }
+                    mgr.clients.forEach(c => { if (!c.notes) c.notes = ''; });
                 });
             } else {
                 data.managers = initialData.managers;
                 db.ref('managers').set(data.managers);
             }
 
-            // Draw once and stop
             draw();
-            console.log('Dashboard loaded successfully!');
         }).catch(err => {
             console.error('Load error:', err);
             alert('Error loading from Firebase: ' + err.message);
         });
 
-        // Actions - GLOBAL FUNCTIONS
+        // Actions
         function updateSetting(field, val) {
             data.settings[field] = parseInt(val) || 0;
             save();
@@ -156,20 +156,22 @@
         function addClient(mgrId) {
             const nameInput = document.getElementById(`name-${mgrId}`);
             const videosInput = document.getElementById(`videos-${mgrId}`);
+            const notesInput = document.getElementById(`notes-${mgrId}`);
             
             if (!nameInput || !videosInput) return;
             
             const name = nameInput.value.trim();
             const videos = parseInt(videosInput.value);
+            const notes = notesInput ? notesInput.value.trim() : '';
             
             if (!name || !videos) {
-                alert('Please enter both name and videos');
+                alert('Please enter client name and videos');
                 return;
             }
             
             const mgr = data.managers.find(m => m.id === mgrId);
             if (mgr) {
-                mgr.clients.push({ id: Date.now(), name, videos });
+                mgr.clients.push({ id: Date.now(), name, videos, notes });
                 data.addingTo = null;
                 draw();
                 save();
@@ -177,6 +179,7 @@
         }
 
         function removeClient(mgrId, clientId) {
+            if (!confirm('Remove this client?')) return;
             const mgr = data.managers.find(m => m.id === mgrId);
             if (mgr) {
                 mgr.clients = mgr.clients.filter(c => c.id !== clientId);
@@ -201,13 +204,95 @@
             }
         }
 
-        // Calculate Capacity (with safety checks)
-        function calcCap(mgr) {
-            // Ensure clients array exists
-            if (!mgr.clients || !Array.isArray(mgr.clients)) {
-                mgr.clients = [];
+        function addManager() {
+            const name = prompt('Enter new Account Manager name:');
+            if (!name) return;
+            const newId = Math.max(...data.managers.map(m => m.id), 0) + 1;
+            data.managers.push({ id: newId, name, clients: [] });
+            draw();
+            save();
+        }
+
+        function removeManager(mgrId) {
+            const mgr = data.managers.find(m => m.id === mgrId);
+            if (!mgr) return;
+            if (mgr.clients.length > 0) {
+                if (!confirm(`${mgr.name} has ${mgr.clients.length} clients. Remove anyway?`)) return;
             }
+            data.managers = data.managers.filter(m => m.id !== mgrId);
+            draw();
+            save();
+        }
+
+        function updateSearch(val) {
+            data.searchQuery = val.toLowerCase();
+            draw();
+        }
+
+        function editClientNotes(mgrId, clientId) {
+            const mgr = data.managers.find(m => m.id === mgrId);
+            if (!mgr) return;
+            const client = mgr.clients.find(c => c.id === clientId);
+            if (!client) return;
+            const notes = prompt('Client Notes:', client.notes);
+            if (notes !== null) {
+                client.notes = notes;
+                draw();
+                save();
+            }
+        }
+
+        // Drag & Drop
+        function dragStart(e, mgrId, clientId) {
+            data.draggedClient = { mgrId, clientId };
+            e.target.classList.add('dragging');
+        }
+
+        function dragEnd(e) {
+            e.target.classList.remove('dragging');
+            document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+        }
+
+        function dragOver(e, targetMgrId) {
+            e.preventDefault();
+            const target = e.currentTarget;
+            if (!target.classList.contains('drag-over')) {
+                target.classList.add('drag-over');
+            }
+        }
+
+        function dragLeave(e) {
+            e.currentTarget.classList.remove('drag-over');
+        }
+
+        function drop(e, targetMgrId) {
+            e.preventDefault();
+            e.currentTarget.classList.remove('drag-over');
             
+            if (!data.draggedClient) return;
+            
+            const { mgrId: fromMgrId, clientId } = data.draggedClient;
+            if (fromMgrId === targetMgrId) return;
+            
+            const fromMgr = data.managers.find(m => m.id === fromMgrId);
+            const toMgr = data.managers.find(m => m.id === targetMgrId);
+            
+            if (!fromMgr || !toMgr) return;
+            
+            const client = fromMgr.clients.find(c => c.id === clientId);
+            if (!client) return;
+            
+            fromMgr.clients = fromMgr.clients.filter(c => c.id !== clientId);
+            toMgr.clients.push(client);
+            
+            data.draggedClient = null;
+            draw();
+            save();
+        }
+
+        // Calculate Capacity
+        function calcCap(mgr) {
+            if (!mgr.clients || !Array.isArray(mgr.clients)) mgr.clients = [];
             const vids = mgr.clients.reduce((sum, c) => sum + (c.videos || 0), 0);
             const vidPct = (vids / data.settings.maxVideos) * 100;
             const cliPct = (mgr.clients.length / data.settings.maxClients) * 100;
@@ -221,128 +306,218 @@
         }
 
         function getColor(pct) {
-            return pct >= 90 ? 'red' : pct >= 70 ? 'yellow' : 'green';
+            return pct >= 90 ? 'red' : pct >= 70 ? 'amber' : 'emerald';
         }
 
         function getBgClass(color) {
-            return color === 'red' ? 'bg-red-500' : color === 'yellow' ? 'bg-yellow-500' : 'bg-green-500';
+            return color === 'red' ? 'bg-red-500' : color === 'amber' ? 'bg-amber-500' : 'bg-emerald-500';
         }
 
-        // Draw UI - ONLY when called manually
+        function getTextClass(color) {
+            return color === 'red' ? 'text-red-600' : color === 'amber' ? 'text-amber-600' : 'text-emerald-600';
+        }
+
+        function getIcon(color) {
+            if (color === 'red') return '<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>';
+            if (color === 'amber') return '<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>';
+            return '<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>';
+        }
+
+        // Filter managers
+        function filterManagers() {
+            if (!data.searchQuery) return data.managers;
+            return data.managers.filter(mgr => 
+                mgr.name.toLowerCase().includes(data.searchQuery) ||
+                mgr.clients.some(c => c.name.toLowerCase().includes(data.searchQuery))
+            );
+        }
+
+        // Draw UI
         function draw() {
-            if (isDrawing) {
-                console.log('Already drawing, skipping...');
-                return;
-            }
+            if (isDrawing) return;
             isDrawing = true;
 
-            const sorted = [...data.managers].sort((a, b) => 
-                calcCap(a).overall - calcCap(b).overall
-            );
+            const sorted = [...data.managers].sort((a, b) => calcCap(a).overall - calcCap(b).overall);
             const best = sorted[0];
+            
+            // Calculate overall stats
+            const totalCapacity = data.managers.reduce((sum, mgr) => sum + calcCap(mgr).overall, 0) / data.managers.length;
+            const totalClients = data.managers.reduce((sum, mgr) => sum + mgr.clients.length, 0);
+            const totalVideos = data.managers.reduce((sum, mgr) => sum + calcCap(mgr).videos, 0);
+
+            const filtered = filterManagers();
 
             document.getElementById('app').innerHTML = `
-                <div class="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-8">
-                    <div class="max-w-7xl mx-auto">
-                        <!-- Header -->
-                        <div class="flex justify-between items-center mb-8">
-                            <div>
-                                <h1 class="text-4xl font-bold text-gray-800">Account Manager Dashboard</h1>
-                                <p class="text-gray-600 mt-1">Track capacity and optimize allocation</p>
-                            </div>
-                            <div id="sync-status" class="flex items-center gap-2 text-sm">
-                                <span class="text-green-600">✓ Saved</span>
-                            </div>
-                        </div>
-
-                        <!-- Settings -->
-                        <div class="bg-white rounded-lg shadow p-6 mb-6">
-                            <h2 class="text-xl font-bold mb-4">Capacity Limits</h2>
-                            <div class="grid md:grid-cols-2 gap-4">
+                <div class="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100">
+                    <!-- Header -->
+                    <div class="bg-white border-b border-slate-200 shadow-sm">
+                        <div class="max-w-7xl mx-auto px-8 py-6">
+                            <div class="flex justify-between items-center">
                                 <div>
-                                    <label class="block text-sm font-medium mb-2">Max Clients</label>
-                                    <input type="number" value="${data.settings.maxClients}" 
-                                        onchange="updateSetting('maxClients', this.value)"
-                                        class="w-full px-4 py-2 border rounded-lg">
+                                    <h1 class="text-3xl font-bold text-slate-900">Account Manager Dashboard</h1>
+                                    <p class="text-slate-600 mt-1">Capacity tracking & client allocation</p>
                                 </div>
-                                <div>
-                                    <label class="block text-sm font-medium mb-2">Max Videos/Month</label>
-                                    <input type="number" value="${data.settings.maxVideos}"
-                                        onchange="updateSetting('maxVideos', this.value)"
-                                        class="w-full px-4 py-2 border rounded-lg">
+                                <div id="sync-status" class="flex items-center gap-2 text-sm">
+                                    <span class="text-emerald-600 font-medium">Loaded</span>
                                 </div>
                             </div>
                         </div>
+                    </div>
 
-                        <!-- Recommendation -->
-                        <div class="bg-blue-600 text-white rounded-lg shadow p-6 mb-6">
-                            <h2 class="text-xl font-bold mb-2">📋 Next Assignment</h2>
-                            <p class="text-lg">Give next client to: <strong>${best.name}</strong></p>
-                            <p class="text-sm opacity-90 mt-1">Current load: ${calcCap(best).overall.toFixed(0)}%</p>
+                    <div class="max-w-7xl mx-auto px-8 py-8">
+                        <!-- Stats Overview -->
+                        <div class="grid grid-cols-4 gap-4 mb-8">
+                            <div class="bg-white rounded-xl shadow-sm p-6 border border-slate-200">
+                                <div class="text-sm font-medium text-slate-600 mb-1">Team Capacity</div>
+                                <div class="text-3xl font-bold ${getTextClass(getColor(totalCapacity))}">${totalCapacity.toFixed(0)}%</div>
+                            </div>
+                            <div class="bg-white rounded-xl shadow-sm p-6 border border-slate-200">
+                                <div class="text-sm font-medium text-slate-600 mb-1">Total Managers</div>
+                                <div class="text-3xl font-bold text-slate-900">${data.managers.length}</div>
+                            </div>
+                            <div class="bg-white rounded-xl shadow-sm p-6 border border-slate-200">
+                                <div class="text-sm font-medium text-slate-600 mb-1">Total Clients</div>
+                                <div class="text-3xl font-bold text-slate-900">${totalClients}</div>
+                            </div>
+                            <div class="bg-white rounded-xl shadow-sm p-6 border border-slate-200">
+                                <div class="text-sm font-medium text-slate-600 mb-1">Total Videos/Mo</div>
+                                <div class="text-3xl font-bold text-slate-900">${totalVideos}</div>
+                            </div>
+                        </div>
+
+                        <!-- Settings & Controls -->
+                        <div class="grid grid-cols-2 gap-6 mb-8">
+                            <!-- Settings -->
+                            <div class="bg-white rounded-xl shadow-sm p-6 border border-slate-200">
+                                <h2 class="text-lg font-bold text-slate-900 mb-4">Capacity Limits</h2>
+                                <div class="space-y-4">
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 mb-2">Max Clients per Manager</label>
+                                        <input type="number" value="${data.settings.maxClients}" 
+                                            onchange="updateSetting('maxClients', this.value)"
+                                            class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 mb-2">Max Videos per Month</label>
+                                        <input type="number" value="${data.settings.maxVideos}"
+                                            onchange="updateSetting('maxVideos', this.value)"
+                                            class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Next Assignment -->
+                            <div class="bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-xl shadow-sm p-6">
+                                <h2 class="text-lg font-bold mb-3 flex items-center gap-2">
+                                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path></svg>
+                                    Next Client Assignment
+                                </h2>
+                                <div class="bg-white/10 rounded-lg p-4 backdrop-blur-sm">
+                                    <p class="text-lg mb-2">Assign to: <strong class="text-xl">${best.name}</strong></p>
+                                    <p class="text-sm text-blue-100">Current utilization: ${calcCap(best).overall.toFixed(0)}%</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Search & Add Manager -->
+                        <div class="flex gap-4 mb-6">
+                            <input type="text" placeholder="Search managers or clients..." 
+                                oninput="updateSearch(this.value)" value="${data.searchQuery}"
+                                class="flex-1 px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                            <button onclick="addManager()"
+                                class="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium flex items-center gap-2">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                                Add Manager
+                            </button>
                         </div>
 
                         <!-- Managers Grid -->
                         <div class="grid lg:grid-cols-2 gap-6">
-                            ${data.managers.map(mgr => {
+                            ${filtered.map(mgr => {
                                 const cap = calcCap(mgr);
                                 const color = getColor(cap.overall);
                                 const bgClass = getBgClass(color);
                                 
                                 return `
-                                    <div class="bg-white rounded-lg shadow overflow-hidden">
+                                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden card-enter"
+                                        ondragover="dragOver(event, ${mgr.id})" 
+                                        ondragleave="dragLeave(event)"
+                                        ondrop="drop(event, ${mgr.id})">
                                         <!-- Header -->
-                                        <div class="${bgClass} text-white p-4">
-                                            <div class="flex justify-between items-center">
-                                                <div class="flex items-center gap-3">
-                                                    ${color === 'green' ? '✅' : color === 'yellow' ? '⚠️' : '🚨'}
-                                                    ${data.editingId === mgr.id ? 
-                                                        `<input type="text" value="${mgr.name}" 
-                                                            onblur="renameManager(${mgr.id}, this.value)"
-                                                            onkeypress="if(event.key==='Enter') renameManager(${mgr.id}, this.value)"
-                                                            class="bg-white text-black px-2 py-1 rounded" autofocus>` :
-                                                        `<h3 class="text-xl font-bold">${mgr.name}</h3>`
-                                                    }
-                                                    <button onclick="startEdit(${mgr.id})" class="hover:bg-white/20 p-1 rounded text-xl">✏️</button>
+                                        <div class="${bgClass} text-white p-5">
+                                            <div class="flex justify-between items-start">
+                                                <div class="flex items-center gap-3 flex-1">
+                                                    ${getIcon(color)}
+                                                    <div class="flex-1">
+                                                        ${data.editingId === mgr.id ? 
+                                                            `<input type="text" value="${mgr.name}" 
+                                                                onblur="renameManager(${mgr.id}, this.value)"
+                                                                onkeypress="if(event.key==='Enter') renameManager(${mgr.id}, this.value)"
+                                                                class="w-full bg-white text-slate-900 px-3 py-2 rounded-lg font-bold" autofocus>` :
+                                                            `<h3 class="text-xl font-bold">${mgr.name}</h3>`
+                                                        }
+                                                    </div>
+                                                    <button onclick="startEdit(${mgr.id})" class="hover:bg-white/20 p-2 rounded-lg">
+                                                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+                                                    </button>
+                                                    <button onclick="removeManager(${mgr.id})" class="hover:bg-white/20 p-2 rounded-lg">
+                                                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                                    </button>
                                                 </div>
-                                                <div class="text-right">
-                                                    <div class="text-3xl font-bold">${cap.overall.toFixed(0)}%</div>
-                                                    <div class="text-sm opacity-90">Used</div>
+                                                <div class="text-right ml-4">
+                                                    <div class="text-4xl font-bold">${cap.overall.toFixed(0)}%</div>
+                                                    <div class="text-sm opacity-90">Capacity</div>
                                                 </div>
                                             </div>
                                         </div>
 
                                         <!-- Stats -->
-                                        <div class="grid grid-cols-2 gap-4 p-4 bg-gray-50">
+                                        <div class="grid grid-cols-2 gap-4 p-5 bg-slate-50">
                                             <div>
-                                                <div class="text-sm text-gray-600">Clients</div>
-                                                <div class="text-2xl font-bold">${cap.clients} / ${data.settings.maxClients}</div>
-                                                <div class="mt-1 h-2 bg-gray-200 rounded-full overflow-hidden">
-                                                    <div class="${getBgClass(getColor(cap.cliPct))} h-full" style="width:${cap.cliPct}%"></div>
+                                                <div class="text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1">Clients</div>
+                                                <div class="text-2xl font-bold text-slate-900">${cap.clients} / ${data.settings.maxClients}</div>
+                                                <div class="mt-2 h-2 bg-slate-200 rounded-full overflow-hidden">
+                                                    <div class="${getBgClass(getColor(cap.cliPct))} h-full transition-all" style="width:${cap.cliPct}%"></div>
                                                 </div>
                                             </div>
                                             <div>
-                                                <div class="text-sm text-gray-600">Videos</div>
-                                                <div class="text-2xl font-bold">${cap.videos} / ${data.settings.maxVideos}</div>
-                                                <div class="mt-1 h-2 bg-gray-200 rounded-full overflow-hidden">
-                                                    <div class="${getBgClass(getColor(cap.vidPct))} h-full" style="width:${cap.vidPct}%"></div>
+                                                <div class="text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1">Videos</div>
+                                                <div class="text-2xl font-bold text-slate-900">${cap.videos} / ${data.settings.maxVideos}</div>
+                                                <div class="mt-2 h-2 bg-slate-200 rounded-full overflow-hidden">
+                                                    <div class="${getBgClass(getColor(cap.vidPct))} h-full transition-all" style="width:${cap.vidPct}%"></div>
                                                 </div>
                                             </div>
                                         </div>
 
                                         <!-- Clients -->
-                                        <div class="p-4">
-                                            <h4 class="font-bold mb-3">Clients</h4>
+                                        <div class="p-5">
+                                            <h4 class="font-bold text-slate-900 mb-3 flex items-center gap-2">
+                                                <svg class="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+                                                Clients
+                                            </h4>
                                             ${mgr.clients.length === 0 ? 
-                                                '<p class="text-gray-400 italic text-sm">No clients yet</p>' :
+                                                '<p class="text-slate-400 italic text-sm py-4 text-center">No clients assigned</p>' :
                                                 `<div class="space-y-2 mb-3">
                                                     ${mgr.clients.map(c => `
-                                                        <div class="flex justify-between items-center bg-gray-50 p-3 rounded">
-                                                            <div>
-                                                                <div class="font-medium">${c.name}</div>
-                                                                <div class="text-sm text-gray-600">${c.videos} videos/mo</div>
+                                                        <div draggable="true" 
+                                                            ondragstart="dragStart(event, ${mgr.id}, ${c.id})"
+                                                            ondragend="dragEnd(event)"
+                                                            class="flex justify-between items-center bg-slate-50 p-4 rounded-lg border border-slate-200 hover:border-blue-300 hover:shadow-sm cursor-move">
+                                                            <div class="flex-1">
+                                                                <div class="font-semibold text-slate-900">${c.name}</div>
+                                                                <div class="text-sm text-slate-600">${c.videos} videos/month</div>
+                                                                ${c.notes ? `<div class="text-xs text-slate-500 mt-1 italic">${c.notes}</div>` : ''}
                                                             </div>
-                                                            <button onclick="removeClient(${mgr.id}, ${c.id})"
-                                                                class="text-red-500 hover:bg-red-50 p-2 rounded text-xl">🗑️</button>
+                                                            <div class="flex gap-2">
+                                                                <button onclick="editClientNotes(${mgr.id}, ${c.id})"
+                                                                    class="p-2 text-slate-600 hover:bg-slate-200 rounded-lg" title="Edit notes">
+                                                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+                                                                </button>
+                                                                <button onclick="removeClient(${mgr.id}, ${c.id})"
+                                                                    class="p-2 text-red-600 hover:bg-red-50 rounded-lg">
+                                                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                                                </button>
+                                                            </div>
                                                         </div>
                                                     `).join('')}
                                                 </div>`
@@ -350,26 +525,29 @@
 
                                             <!-- Add Client Form -->
                                             ${data.addingTo === mgr.id ? `
-                                                <div class="bg-blue-50 p-3 rounded space-y-2">
+                                                <div class="bg-blue-50 p-4 rounded-lg space-y-3 border border-blue-200">
                                                     <input type="text" id="name-${mgr.id}" placeholder="Client name" 
-                                                        class="w-full px-3 py-2 border rounded-lg">
-                                                    <input type="number" id="videos-${mgr.id}" placeholder="Videos/month"
-                                                        class="w-full px-3 py-2 border rounded-lg">
+                                                        class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                                    <input type="number" id="videos-${mgr.id}" placeholder="Videos per month"
+                                                        class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                                    <textarea id="notes-${mgr.id}" placeholder="Notes (optional)" rows="2"
+                                                        class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"></textarea>
                                                     <div class="flex gap-2">
                                                         <button onclick="addClient(${mgr.id})"
                                                             class="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 font-medium">
                                                             Add Client
                                                         </button>
                                                         <button onclick="cancelAdd()"
-                                                            class="px-4 py-2 border rounded-lg hover:bg-gray-100">
+                                                            class="px-4 py-2 border border-slate-300 rounded-lg hover:bg-slate-100">
                                                             Cancel
                                                         </button>
                                                     </div>
                                                 </div>
                                             ` : `
                                                 <button onclick="showAddForm(${mgr.id})"
-                                                    class="w-full py-2 border-2 border-dashed rounded-lg hover:border-blue-500 hover:text-blue-600 font-medium">
-                                                    + Add Client
+                                                    class="w-full py-3 border-2 border-dashed border-slate-300 rounded-lg hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50 font-medium flex items-center justify-center gap-2">
+                                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                                                    Add Client
                                                 </button>
                                             `}
                                         </div>
@@ -377,6 +555,8 @@
                                 `;
                             }).join('')}
                         </div>
+
+                        ${filtered.length === 0 ? '<div class="text-center py-12 text-slate-500">No results found</div>' : ''}
                     </div>
                 </div>
             `;
@@ -384,10 +564,5 @@
             isDrawing = false;
         }
     </script>
-
-    <style>
-        @keyframes spin { to { transform: rotate(360deg); } }
-        .animate-spin { animation: spin 1s linear infinite; }
-    </style>
 </body>
 </html>
